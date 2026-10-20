@@ -1,0 +1,1606 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Probabilistic Metric Learning: Siamese & Triplet Networks</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        slate: {
+                            850: '#151e2e',
+                            900: '#0f172a',
+                            950: '#020617',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #090d16;
+            color: #e2e8f0;
+            overflow-x: hidden;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.78);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(51, 65, 85, 0.6);
+        }
+        .math-symbol {
+            font-family: 'Times New Roman', Times, serif;
+            font-style: italic;
+        }
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            height: 6px;
+            border-radius: 3px;
+            background: #334155;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #38bdf8;
+            margin-top: -5px;
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+            transition: transform 0.15s ease;
+        }
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+        }
+        .pulse-ring {
+            animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.03); opacity: 0.4; }
+            100% { transform: scale(0.95); opacity: 0.8; }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col font-sans antialiased selection:bg-sky-500 selection:text-white">
+
+    <!-- Top Navigation & Mode Switcher -->
+    <header class="sticky top-0 z-30 glass-panel border-b border-slate-800 px-4 py-3 sm:px-6">
+        <div class="max-w-[1600px] mx-auto flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/20">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-lg sm:text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                        Probabilistic Metric Learning Lab
+                        <span class="hidden sm:inline-block text-xs font-mono uppercase px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20">Interactive Intuition</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">Explore Energy-Based Models, Gaussian Embeddings $\mathcal{N}(\mu_z, \Sigma_z)$, Contrastive & Triplet Ranking</p>
+                </div>
+            </div>
+
+            <!-- Mode Switcher Tabs -->
+            <div class="flex flex-wrap items-center gap-2 bg-slate-900/90 p-1.5 rounded-xl border border-slate-800 w-full lg:w-auto">
+                <button id="btn-mode-siamese" onclick="switchMode('siamese')" class="flex-1 lg:flex-initial px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-md">
+                    <span class="w-2 h-2 rounded-full bg-white animate-pulse"></span>
+                    Siamese Network (Pairwise Probabilistic)
+                </button>
+                <button id="btn-mode-triplet" onclick="switchMode('triplet')" class="flex-1 lg:flex-initial px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 text-slate-400 hover:text-white hover:bg-slate-800/60">
+                    <span class="w-2 h-2 rounded-full bg-slate-600"></span>
+                    Triplet Network (Relative Ranking)
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace Container -->
+    <main class="flex-1 max-w-[1600px] w-full mx-auto p-3 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+        <!-- LEFT COLUMN: Guided Learning Tour & Controls (4 Cols on Desktop) -->
+        <section class="lg:col-span-4 flex flex-col gap-5">
+            
+            <!-- Guided Pedagogical Tour Card -->
+            <div class="glass-panel rounded-2xl p-4 sm:p-5 border border-sky-500/30 shadow-xl relative overflow-hidden">
+                <div class="absolute -right-10 -top-10 w-32 h-32 bg-sky-500/10 rounded-full blur-2xl pointer-events-none"></div>
+                
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-2">
+                        <span class="px-2.5 py-0.5 rounded-md text-xs font-mono font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/30" id="tour-step-badge">
+                            Lesson 1 / 5
+                        </span>
+                        <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Guided Intuition</span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                        <button onclick="prevLesson()" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition" title="Previous Step">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                        </button>
+                        <button onclick="nextLesson()" class="px-2.5 py-1 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium transition flex items-center gap-1" title="Next Step">
+                            Next <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <h2 id="tour-title" class="text-base sm:text-lg font-bold text-white mb-2">
+                    1. Deterministic vs. Probabilistic Embeddings
+                </h2>
+                <div id="tour-body" class="text-xs sm:text-sm text-slate-300 space-y-2.5 leading-relaxed">
+                    <!-- Dynamic Lesson Content Injected via JS -->
+                </div>
+
+                <!-- Interactive Try-It Prompt Box -->
+                <div class="mt-4 p-3 rounded-xl bg-indigo-950/60 border border-indigo-500/30 flex items-start gap-2.5">
+                    <div class="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-300 shrink-0 mt-0.5">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/></svg>
+                    </div>
+                    <div class="flex-1">
+                        <div class="text-[11px] font-semibold uppercase tracking-wider text-indigo-300">Interactive Experiment</div>
+                        <p id="tour-action" class="text-xs text-indigo-100 mt-0.5">
+                            Drag point x₁ or x₂ on the canvas and watch how the Gaussian uncertainty clouds overlap!
+                        </p>
+                        <button id="tour-preset-btn" onclick="applyLessonPreset()" class="mt-2 px-3 py-1 rounded-lg bg-indigo-600/80 hover:bg-indigo-500 text-white text-xs font-medium transition inline-flex items-center gap-1.5">
+                            <span>Load Scenario Preset</span>
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Hyperparameters & Simulation Controls -->
+            <div class="glass-panel rounded-2xl p-4 sm:p-5 flex flex-col gap-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <h3 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+                        Model & Latent Controls
+                    </h3>
+                    <button onclick="resetPositions()" class="text-xs text-slate-400 hover:text-white flex items-center gap-1 bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700 transition">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                        Reset Points
+                    </button>
+                </div>
+
+                <!-- Siamese Specific Controls: Pair Label Toggle -->
+                <div id="ctrl-siamese-group" class="space-y-3">
+                    <label class="block text-xs font-medium text-slate-300">Pair Ground-Truth Relationship ($y$)</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button id="btn-pair-pos" onclick="setPairLabel(1)" class="py-2 px-3 rounded-xl font-semibold text-xs flex items-center justify-center gap-2 border transition-all bg-emerald-500/20 border-emerald-500 text-emerald-300 shadow-lg shadow-emerald-500/10">
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                            Same Class ($y = 1$)
+                        </button>
+                        <button id="btn-pair-neg" onclick="setPairLabel(0)" class="py-2 px-3 rounded-xl font-semibold text-xs flex items-center justify-center gap-2 border transition-all bg-slate-800/60 border-slate-700 text-slate-400 hover:text-white">
+                            <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                            Diff Class ($y = 0$)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Triplet Specific Controls: Mining Preset Quick Jump -->
+                <div id="ctrl-triplet-group" class="hidden space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs font-medium text-slate-300">Triplet Negative Mining Scenarios</label>
+                        <span id="triplet-regime-pill" class="px-2 py-0.5 text-[11px] font-mono font-bold rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                            SEMI-HARD NEGATIVE
+                        </span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button onclick="setTripletRegime('hard')" class="py-1.5 px-2 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-xs font-medium transition">
+                            Hard $N$
+                        </button>
+                        <button onclick="setTripletRegime('semihard')" class="py-1.5 px-2 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-medium transition">
+                            Semi-Hard $N$
+                        </button>
+                        <button onclick="setTripletRegime('easy')" class="py-1.5 px-2 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-medium transition">
+                            Easy $N$
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Margin Slider (m or alpha) -->
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-300 font-medium" id="label-margin">Contrastive Margin ($m$)</span>
+                        <span class="font-mono text-sky-400 font-semibold" id="val-margin">1.80</span>
+                    </div>
+                    <input type="range" id="slider-margin" min="0.5" max="3.2" step="0.05" value="1.80" oninput="updateHyperparams()" class="w-full">
+                    <p class="text-[11px] text-slate-400" id="desc-margin">Minimum distance before different-class pairs stop incurring repelling loss.</p>
+                </div>
+
+                <!-- Embedding Uncertainty Variance Slider (sigma^2) -->
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-300 font-medium">Aleatoric Uncertainty ($\sigma_z^2$ Covariance)</span>
+                        <span class="font-mono text-purple-400 font-semibold" id="val-sigma">0.35</span>
+                    </div>
+                    <input type="range" id="slider-sigma" min="0.08" max="0.95" step="0.02" value="0.35" oninput="updateHyperparams()" class="w-full">
+                    <p class="text-[11px] text-slate-400">Models noisy/ambiguous inputs as Gaussian distributions $\mathcal{N}(\mu_z, \sigma_z^2 I)$ in latent space.</p>
+                </div>
+
+                <!-- Temperature / Probabilistic Scale Slider -->
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-xs">
+                        <span class="text-slate-300 font-medium">Energy Temperature ($\tau$)</span>
+                        <span class="font-mono text-amber-400 font-semibold" id="val-temp">1.00</span>
+                    </div>
+                    <input type="range" id="slider-temp" min="0.3" max="2.5" step="0.05" value="1.00" oninput="updateHyperparams()" class="w-full">
+                    <p class="text-[11px] text-slate-400">Controls sharpness of the probabilistic sigmoid boundary $P(\text{match} \mid z)$.</p>
+                </div>
+
+                <!-- Gradient Optimization Action Buttons -->
+                <div class="pt-2 border-t border-slate-800 flex flex-col gap-2">
+                    <div class="text-xs font-medium text-slate-300 flex items-center justify-between">
+                        <span>Gradient Descent Dynamics ($-\nabla_{\mu} \mathcal{L}$)</span>
+                        <span id="grad-status-text" class="text-[11px] font-mono text-slate-400">Ready</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2.5">
+                        <button onclick="stepGradient()" class="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white font-semibold text-xs flex items-center justify-center gap-2 transition shadow">
+                            <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>
+                            Step Gradient (1x)
+                        </button>
+                        <button id="btn-auto-opt" onclick="toggleAutoOptimize()" class="py-2.5 px-3 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-sky-500/20">
+                            <svg id="icon-play" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            <span id="text-auto-opt">Auto-Optimize</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Mathematical Formulation Card -->
+            <div class="glass-panel rounded-2xl p-4 sm:p-5 space-y-3">
+                <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                    <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                    Probabilistic & Metric Equations
+                </h3>
+                <div id="math-formula-box" class="bg-slate-950/90 border border-slate-800 rounded-xl p-3 font-mono text-xs space-y-2 text-slate-200">
+                    <!-- Dynamic Math Breakdown populated by JS -->
+                </div>
+            </div>
+        </section>
+
+        <!-- RIGHT COLUMN: Interactive 2D Latent Space, Architecture & Loss Landscape (8 Cols on Desktop) -->
+        <section class="lg:col-span-8 flex flex-col gap-5">
+
+            <!-- Interactive 2D Probabilistic Embedding Space Canvas -->
+            <div class="glass-panel rounded-2xl p-4 sm:p-5 flex flex-col gap-3 relative">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <h2 class="text-base font-bold text-white flex items-center gap-2">
+                            2D Probabilistic Latent Space $\mathcal{Z} \subset \mathbb{R}^2$
+                            <span class="text-xs font-normal text-slate-400">(Drag embeddings directly on canvas)</span>
+                        </h2>
+                        <p class="text-xs text-slate-400" id="canvas-subtitle">
+                            Visualizing Gaussian Embeddings $\mathcal{N}(\mu_i, \Sigma_i)$, Margin Rings, and Loss Gradient Force Vectors $-\nabla_z \mathcal{L}$
+                        </p>
+                    </div>
+                    <!-- Live Metric Badges -->
+                    <div class="flex flex-wrap items-center gap-2">
+                        <div class="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs flex items-center gap-2">
+                            <span class="text-slate-400" id="badge-dist-label">Euclidean $d(z_1, z_2)$:</span>
+                            <span class="font-mono font-bold text-white" id="badge-dist-val">1.42</span>
+                        </div>
+                        <div class="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs flex items-center gap-2">
+                            <span class="text-slate-400">Loss $\mathcal{L}$:</span>
+                            <span class="font-mono font-bold text-rose-400" id="badge-loss-val">0.68</span>
+                        </div>
+                        <div class="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs flex items-center gap-2">
+                            <span class="text-slate-400" id="badge-prob-label">$P(\text{same})$:</span>
+                            <span class="font-mono font-bold text-emerald-400" id="badge-prob-val">74.2%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Canvas Wrapper -->
+                <div class="relative w-full h-[380px] sm:h-[430px] rounded-xl overflow-hidden border border-slate-800 bg-slate-950 shadow-inner">
+                    <canvas id="latentCanvas" class="w-full h-full cursor-grab active:cursor-grabbing block"></canvas>
+
+                    <!-- Floating Legend Overlay -->
+                    <div class="absolute bottom-3 left-3 bg-slate-900/85 backdrop-blur-md border border-slate-800 rounded-xl px-3 py-2 text-[11px] text-slate-300 flex flex-wrap items-center gap-x-4 gap-y-1 pointer-events-none">
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-3 h-3 rounded-full bg-sky-400 inline-block border border-white"></span>
+                            <span id="legend-pt1">Anchor / $x_1$</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-3 h-3 rounded-full bg-emerald-400 inline-block border border-white"></span>
+                            <span id="legend-pt2">Positive / $x_2$</span>
+                        </div>
+                        <div id="legend-pt3-wrap" class="hidden flex items-center gap-1.5">
+                            <span class="w-3 h-3 rounded-full bg-rose-500 inline-block border border-white"></span>
+                            <span>Negative ($N$)</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-4 h-0.5 bg-amber-400 inline-block"></span>
+                            <span>Force Vector ($-\nabla \mathcal{L}$)</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-3 h-3 rounded-full border border-dashed border-sky-400/70 bg-sky-400/10 inline-block"></span>
+                            <span>$1\sigma / 2\sigma$ Uncertainty</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Row: Shared-Weight Architecture SVG + Real-Time Loss & Probability Chart -->
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                
+                <!-- Dynamic Shared-Weight Network Architecture Diagram -->
+                <div class="glass-panel rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
+                    <div class="mb-2">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-indigo-400"></span>
+                                Shared-Weight Neural Architecture
+                            </h3>
+                            <span class="text-[11px] font-mono text-indigo-300 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+                                Tied Parameters $\theta$
+                            </span>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-0.5">
+                            Identical encoder branches $f_\theta(x) \to (\mu_z, \log \sigma_z^2)$ map inputs to the same metric space.
+                        </p>
+                    </div>
+
+                    <!-- Dynamic SVG Container -->
+                    <div class="w-full bg-slate-950/80 rounded-xl border border-slate-800/80 p-2 flex items-center justify-center min-h-[230px]">
+                        <svg id="archSvg" viewBox="0 0 500 230" class="w-full h-auto max-h-[240px] select-none"></svg>
+                    </div>
+                </div>
+
+                <!-- Real-Time Loss Landscape & Probabilistic Likelihood Curve -->
+                <div class="glass-panel rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
+                    <div class="mb-2">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                Loss Landscape & Probabilistic Likelihood
+                            </h3>
+                            <span id="chart-x-axis-badge" class="text-[11px] font-mono text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
+                                vs. Distance $d$
+                            </span>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-0.5" id="chart-subtitle">
+                            Comparing metric loss $\mathcal{L}$ (solid) and energy-based match probability $P(y=1\mid x_1,x_2)$ (dashed).
+                        </p>
+                    </div>
+
+                    <div class="relative w-full h-[230px] bg-slate-950/80 rounded-xl border border-slate-800/80 overflow-hidden">
+                        <canvas id="lossChartCanvas" class="w-full h-full block"></canvas>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+    </main>
+
+    <script>
+        /***********************************************************************
+         * STATE & CONFIGURATION
+         ***********************************************************************/
+        const state = {
+            mode: 'siamese', // 'siamese' | 'triplet'
+            pairLabel: 1,    // 1 = Same Class (Positive pair), 0 = Different Class (Negative pair)
+            margin: 1.80,    // m for Contrastive, alpha for Triplet
+            sigma2: 0.35,    // Embedding covariance / variance sigma^2
+            temperature: 1.0,// Energy temperature tau
+            autoOptimizing: false,
+            lessonIndex: 0,
+
+            // Coordinates in latent space [-3.5, 3.5] x [-2.5, 2.5]
+            points: {
+                // Used in Siamese mode (x1, x2) and Triplet mode (A, P, N)
+                p1: { x: -0.9, y: 0.1, label: 'x₁', role: 'Anchor (A)', color: '#38bdf8' },
+                p2: { x: 0.7,  y: 0.5, label: 'x₂', role: 'Positive (P)', color: '#34d399' },
+                p3: { x: 0.4,  y: -0.9, label: 'N',  role: 'Negative (N)', color: '#f43f5e' }
+            },
+            draggingPoint: null,
+            hoverPoint: null,
+            animFrameId: null
+        };
+
+        /***********************************************************************
+         * PEDAGOGICAL GUIDED LESSONS (SIAMESE & TRIPLET)
+         ***********************************************************************/
+        const lessons = [
+            {
+                mode: 'siamese',
+                title: '1. Probabilistic Embeddings & Uncertainty',
+                body: `
+                    <p>Standard metric learning maps an input $x$ to a single deterministic point $z = f_\\theta(x)$. However, in <strong>probabilistic machine learning</strong> (e.g., Hedged Instance Embeddings / Probabilistic Face Embeddings), each input is mapped to a <strong>Gaussian distribution</strong> in latent space:</p>
+                    <div class="my-1.5 p-2 rounded bg-slate-900 font-mono text-xs text-sky-300 text-center">
+                        p(z | x) = 𝒩(z; μ_θ(x), Σ_θ(x))
+                    </div>
+                    <p>The shaded ellipses around $x_1$ and $x_2$ show $1\\sigma$ and $2\\sigma$ uncertainty contours. Ambiguous or blurry inputs produce larger covariance $\\Sigma$, spreading probability mass over a wider region.</p>
+                `,
+                action: 'Adjust the "Aleatoric Uncertainty (σ²)" slider and drag x₁ near x₂ to see how their probability distributions overlap.',
+                preset: () => {
+                    switchMode('siamese', false);
+                    state.pairLabel = 1;
+                    state.sigma2 = 0.55;
+                    state.margin = 1.8;
+                    state.points.p1.x = -0.7; state.points.p1.y = 0.0;
+                    state.points.p2.x = 0.7;  state.points.p2.y = 0.2;
+                    syncControlsFromState();
+                }
+            },
+            {
+                mode: 'siamese',
+                title: '2. Siamese Networks as Energy-Based Models',
+                body: `
+                    <p>A <strong>Siamese Network</strong> passes two inputs $x_1, x_2$ through <em>identical shared weights</em> $f_\\theta$. In an energy-based probabilistic view, the uncertainty-scaled squared distance defines an energy $E_\\theta(x_1, x_2)$:</p>
+                    <div class="my-1.5 p-2 rounded bg-slate-900 font-mono text-xs text-emerald-300 text-center">
+                        P(y=1 | x₁, x₂) = σ( (m² - d_Σ(z₁, z₂)²) / τ )
+                    </div>
+                    <p>When $y=1$ (Same Class), Contrastive Loss acts like springs pulling $z_1$ and $z_2$ together with force proportional to distance $d$. Click <strong>Auto-Optimize</strong> to watch them converge!</p>
+                `,
+                action: 'Ensure "Same Class (y = 1)" is selected, drag x₂ far away, and click "Auto-Optimize" to watch the attractive gradient forces.',
+                preset: () => {
+                    switchMode('siamese', false);
+                    state.pairLabel = 1;
+                    state.sigma2 = 0.30;
+                    state.margin = 1.8;
+                    state.points.p1.x = -1.6; state.points.p1.y = -0.6;
+                    state.points.p2.x = 1.5;  state.points.p2.y = 0.8;
+                    syncControlsFromState();
+                }
+            },
+            {
+                mode: 'siamese',
+                title: '3. Repulsive Forces & The Contrastive Margin Ring',
+                body: `
+                    <p>What if $x_1$ and $x_2$ belong to <strong>Different Classes ($y=0$)</strong>? If we pushed negative pairs apart infinitely, the latent space would explode! Instead, Contrastive Loss introduces a <strong>Margin Ring $m$</strong>:</p>
+                    <div class="my-1.5 p-2 rounded bg-slate-900 font-mono text-xs text-rose-300 text-center">
+                        ℒ_neg = ½ max(0, m - d(z₁, z₂))²
+                    </div>
+                    <p>Inside the dashed margin circle ($d < m$), a repulsive gradient pushes $x_2$ outward. Once $x_2$ crosses outside the margin ring ($d \\ge m$), the gradient immediately drops to <strong>zero</strong>.</p>
+                `,
+                action: 'Switch to "Diff Class (y = 0)". Drag x₂ inside the dashed circle autour de x₁, then click "Step Gradient" to push it to the boundary.',
+                preset: () => {
+                    switchMode('siamese', false);
+                    state.pairLabel = 0;
+                    state.margin = 2.0;
+                    state.sigma2 = 0.28;
+                    state.points.p1.x = -0.3; state.points.p1.y = 0.0;
+                    state.points.p2.x = 0.6;  state.points.p2.y = 0.4;
+                    syncControlsFromState();
+                }
+            },
+            {
+                mode: 'triplet',
+                title: '4. Triplet Networks & Relative Probabilistic Ranking',
+                body: `
+                    <p>Siamese loss forces all same-class pairs to collapse to a fixed absolute threshold. <strong>Triplet Networks</strong> relax this by learning <em>relative ordering</em> among an <strong>Anchor ($A$)</strong>, a <strong>Positive ($P$)</strong>, and a <strong>Negative ($N$)</strong>:</p>
+                    <div class="my-1.5 p-2 rounded bg-slate-900 font-mono text-xs text-sky-300 text-center">
+                        P(d(A,P) &lt; d(A,N)) = σ( (d(A,N)² - d(A,P)² - α) / τ )
+                    </div>
+                    <p>We only require that $A$ is closer to $P$ than to $N$ by at least a margin $\\alpha$: $d(A,P) + \\alpha < d(A,N)$.</p>
+                `,
+                action: 'Explore Triplet Mode! Notice the inner green ring d(A,P) and outer amber margin ring d(A,P) + α around the Anchor A.',
+                preset: () => {
+                    switchMode('triplet', false);
+                    state.margin = 1.1;
+                    state.sigma2 = 0.30;
+                    state.points.p1.x = -0.8; state.points.p1.y = 0.0;
+                    state.points.p2.x = 0.3;  state.points.p2.y = 0.7;
+                    state.points.p3.x = 0.6;  state.points.p3.y = -0.6;
+                    syncControlsFromState();
+                }
+            },
+            {
+                mode: 'triplet',
+                title: '5. Hard, Semi-Hard & Easy Negative Mining',
+                body: `
+                    <p>In Triplet learning, where $N$ lies relative to the two rings around $A$ determines training efficiency:</p>
+                    <ul class="list-disc list-inside space-y-1 text-slate-300">
+                        <li><strong class="text-rose-400">Hard Negative</strong> ($d(A,N) < d(A,P)$): Inside inner green ring. Strongest gradients, but noisy labels can cause collapse.</li>
+                        <li><strong class="text-amber-300">Semi-Hard Negative</strong> ($d(A,P) \\le d(A,N) < d(A,P)+\\alpha$): Inside the amber margin annulus. Ideal for stable convergence!</li>
+                        <li><strong class="text-emerald-400">Easy Negative</strong> ($d(A,N) \\ge d(A,P)+\\alpha$): Outside outer ring. $\\mathcal{L}=0$, no gradient update.</li>
+                    </ul>
+                `,
+                action: 'Drag the red Negative (N) across the 3 zones around Anchor (A), or click the Hard / Semi-Hard / Easy preset buttons below.',
+                preset: () => {
+                    switchMode('triplet', false);
+                    state.margin = 1.25;
+                    state.points.p1.x = -0.6; state.points.p1.y = 0.0;
+                    state.points.p2.x = 0.5;  state.points.p2.y = 0.6;
+                    state.points.p3.x = 0.1;  state.points.p3.y = -0.3; // Hard negative
+                    syncControlsFromState();
+                }
+            }
+        ];
+
+        /***********************************************************************
+         * CORE MATHEMATICAL & PROBABILISTIC ENGINE
+         ***********************************************************************/
+        function euclideanDist(a, b) {
+            return Math.hypot(a.x - b.x, a.y - b.y);
+        }
+
+        function sigmoid(z) {
+            return 1 / (1 + Math.exp(-z));
+        }
+
+        /**
+         * Computes metrics, probabilistic likelihoods, and analytical gradients
+         * for either Siamese (Contrastive/Probabilistic) or Triplet mode.
+         */
+        function computeMetricsAndGradients() {
+            const { p1, p2, p3 } = state.points;
+            const m = state.margin;
+            const sigma2 = state.sigma2;
+            const tau = state.temperature;
+
+            // Effective variance factor (combining two isotropic Gaussians N(mu1, sigma^2 I) and N(mu2, sigma^2 I))
+            // Expected squared distance E[||z1 - z2||^2] = ||mu1 - mu2||^2 + 4 * sigma^2
+            const totalVar = 2 * sigma2;
+
+            if (state.mode === 'siamese') {
+                const d = euclideanDist(p1, p2);
+                const dSafe = Math.max(d, 1e-5);
+                const y = state.pairLabel;
+
+                // Mahalanobis / uncertainty-attenuated squared distance
+                const d2Prob = (d * d) / (1 + totalVar);
+
+                // Probabilistic Bernoulli Match Likelihood P(y=1 | x1, x2)
+                // Derived from log-odds comparing distance energy to margin threshold m
+                const logit = ((m * m) - d2Prob * (1 + totalVar * 0.5)) / tau;
+                const probSame = sigmoid(logit);
+
+                // Classical Contrastive Loss + Uncertainty regularization term
+                let loss = 0;
+                let gradScale = 0; // dL / dd
+
+                if (y === 1) {
+                    // Positive pair: L = 0.5 * d^2 / (1 + sigma^2) + 0.5 * log(1 + sigma^2)
+                    loss = 0.5 * (d * d) / (1 + sigma2) + 0.35 * Math.log(1 + sigma2);
+                    gradScale = d / (1 + sigma2); // Positive value means pull together
+                } else {
+                    // Negative pair: L = 0.5 * max(0, m - d)^2 / (1 + sigma^2)
+                    const diff = Math.max(0, m - d);
+                    loss = 0.5 * (diff * diff) / (1 + sigma2);
+                    gradScale = diff > 0 ? -(m - d) / (1 + sigma2) : 0; // Negative value means push apart
+                }
+
+                // Unit vector from p1 to p2
+                const ux = (p2.x - p1.x) / dSafe;
+                const uy = (p2.y - p1.y) / dSafe;
+
+                // Negative gradient -dL/dp (direction of steepest descent)
+                // If gradScale > 0 (pull together): p1 moves toward p2 (+u), p2 moves toward p1 (-u)
+                const g1 = { x: ux * gradScale, y: uy * gradScale };
+                const g2 = { x: -ux * gradScale, y: -uy * gradScale };
+
+                return {
+                    d,
+                    loss,
+                    prob: probSame,
+                    gradients: { p1: g1, p2: g2, p3: { x: 0, y: 0 } }
+                };
+
+            } else {
+                // TRIPLET MODE: p1 = Anchor (A), p2 = Positive (P), p3 = Negative (N)
+                const dAP = euclideanDist(p1, p2);
+                const dAN = euclideanDist(p1, p3);
+                const dAPSafe = Math.max(dAP, 1e-5);
+                const dANSafe = Math.max(dAN, 1e-5);
+                const alpha = m;
+
+                // Triplet Margin Loss (using Euclidean distance formulation for intuitive concentric circles)
+                // L = max(0, d(A,P) - d(A,N) + alpha) / (1 + sigma^2)
+                const rawViolation = dAP - dAN + alpha;
+                const active = rawViolation > 0;
+                const loss = active ? (rawViolation / (1 + sigma2 * 0.5)) : 0;
+
+                // Probabilistic Triplet Likelihood: P(d(A,P) < d(A,N))
+                // Account for Gaussian uncertainty: larger sigma^2 increases overlap ambiguity (pushes prob toward 50%)
+                const effectiveTemp = tau * (1 + totalVar);
+                const probValidOrder = sigmoid((dAN * dAN - dAP * dAP - alpha) / effectiveTemp);
+
+                // Negative Regime Classification
+                let regime = 'EASY NEGATIVE';
+                let regimeColor = 'emerald';
+                if (dAN < dAP) {
+                    regime = 'HARD NEGATIVE';
+                    regimeColor = 'rose';
+                } else if (dAN < dAP + alpha) {
+                    regime = 'SEMI-HARD NEGATIVE';
+                    regimeColor = 'amber';
+                }
+
+                // Compute analytical gradients -nabla L on A (p1), P (p2), N (p3)
+                let gA = { x: 0, y: 0 };
+                let gP = { x: 0, y: 0 };
+                let gN = { x: 0, y: 0 };
+
+                if (active) {
+                    const scale = 1.0 / (1 + sigma2 * 0.5);
+                    // Unit vector from A to P
+                    const uAPx = (p2.x - p1.x) / dAPSafe;
+                    const uAPy = (p2.y - p1.y) / dAPSafe;
+                    // Unit vector from A to N
+                    const uANx = (p3.x - p1.x) / dANSafe;
+                    const uANy = (p3.y - p1.y) / dANSafe;
+
+                    // P is pulled toward A: -uAP
+                    gP = { x: -uAPx * scale, y: -uAPy * scale };
+                    // N is pushed away from A: +uAN
+                    gN = { x: uANx * scale, y: uANy * scale };
+                    // A is pulled toward P (+uAP) AND pushed away from N (-uAN)
+                    gA = {
+                        x: (uAPx - uANx) * scale,
+                        y: (uAPy - uANy) * scale
+                    };
+                }
+
+                return {
+                    dAP,
+                    dAN,
+                    loss,
+                    prob: probValidOrder,
+                    regime,
+                    regimeColor,
+                    gradients: { p1: gA, p2: gP, p3: gN }
+                };
+            }
+        }
+
+        /***********************************************************************
+         * CANVAS RENDERING: 2D PROBABILISTIC EMBEDDING SPACE
+         ***********************************************************************/
+        const latentCanvas = document.getElementById('latentCanvas');
+        const ctx = latentCanvas.getContext('2d');
+
+        // Coordinate conversion helpers: World space [-3.5, 3.5] x [-2.2, 2.2]
+        const WORLD_SPAN_X = 7.0;
+        function worldToScreen(wx, wy) {
+            const w = latentCanvas.width;
+            const h = latentCanvas.height;
+            const scale = w / WORLD_SPAN_X;
+            return {
+                x: w / 2 + wx * scale,
+                y: h / 2 - wy * scale,
+                scale
+            };
+        }
+
+        function screenToWorld(sx, sy) {
+            const w = latentCanvas.width;
+            const h = latentCanvas.height;
+            const scale = w / WORLD_SPAN_X;
+            return {
+                x: (sx - w / 2) / scale,
+                y: (h / 2 - sy) / scale
+            };
+        }
+
+        function drawArrow(ctx, x1, y1, x2, y2, color, lineWidth = 2.5) {
+            const len = Math.hypot(x2 - x1, y2 - y1);
+            if (len < 4) return;
+            const headLen = Math.min(10, len * 0.35);
+            const angle = Math.atan2(y2 - y1, x2 - x1);
+
+            ctx.save();
+            ctx.strokeStyle = color;
+            ctx.fillStyle = color;
+            ctx.lineWidth = lineWidth;
+            ctx.lineCap = 'round';
+
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(x2, y2);
+            ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6));
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawGaussianCloud(ctx, pt, colorHex, sigma2) {
+            const s = worldToScreen(pt.x, pt.y);
+            const sigmaRadiusPx = Math.sqrt(sigma2) * s.scale;
+
+            ctx.save();
+            // Radial probability density gradient
+            const grad = ctx.createRadialGradient(s.x, s.y, 2, s.x, s.y, sigmaRadiusPx * 2.1);
+            grad.addColorStop(0, colorHex + '55');
+            grad.addColorStop(0.5, colorHex + '22');
+            grad.addColorStop(1, colorHex + '00');
+
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, sigmaRadiusPx * 2.1, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 1-sigma contour ellipse
+            ctx.strokeStyle = colorHex + '88';
+            ctx.lineWidth = 1.2;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, sigmaRadiusPx, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // 2-sigma contour ellipse
+            ctx.strokeStyle = colorHex + '40';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, sigmaRadiusPx * 1.8, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function renderLatentCanvas(metrics) {
+            const w = latentCanvas.width;
+            const h = latentCanvas.height;
+            ctx.clearRect(0, 0, w, h);
+
+            const origin = worldToScreen(0, 0);
+            const scale = origin.scale;
+
+            // 1. Subtle Coordinate Grid
+            ctx.save();
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 1;
+            for (let gx = -3; gx <= 3; gx += 1) {
+                const p = worldToScreen(gx, 0);
+                ctx.beginPath();
+                ctx.moveTo(p.x, 0);
+                ctx.lineTo(p.x, h);
+                ctx.stroke();
+            }
+            for (let gy = -2; gy <= 2; gy += 1) {
+                const p = worldToScreen(0, gy);
+                ctx.beginPath();
+                ctx.moveTo(0, p.y);
+                ctx.lineTo(w, p.y);
+                ctx.stroke();
+            }
+            // Axes
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(0, origin.y); ctx.lineTo(w, origin.y);
+            ctx.moveTo(origin.x, 0); ctx.lineTo(origin.x, h);
+            ctx.stroke();
+            ctx.restore();
+
+            const { p1, p2, p3 } = state.points;
+            const s1 = worldToScreen(p1.x, p1.y);
+            const s2 = worldToScreen(p2.x, p2.y);
+            const s3 = worldToScreen(p3.x, p3.y);
+
+            // 2. Mode-Specific Rings & Zones
+            if (state.mode === 'siamese') {
+                const marginPx = state.margin * scale;
+
+                // Draw Contrastive Margin Ring around p1 (x1)
+                ctx.save();
+                if (state.pairLabel === 0) {
+                    // Highlight repulsive zone when y=0
+                    const zoneGrad = ctx.createRadialGradient(s1.x, s1.y, 5, s1.x, s1.y, marginPx);
+                    zoneGrad.addColorStop(0, 'rgba(244, 63, 94, 0.14)');
+                    zoneGrad.addColorStop(1, 'rgba(244, 63, 94, 0.03)');
+                    ctx.fillStyle = zoneGrad;
+                    ctx.beginPath();
+                    ctx.arc(s1.x, s1.y, marginPx, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                ctx.strokeStyle = state.pairLabel === 0 ? 'rgba(244, 63, 94, 0.75)' : 'rgba(148, 163, 184, 0.35)';
+                ctx.lineWidth = 1.8;
+                ctx.setLineDash([6, 6]);
+                ctx.beginPath();
+                ctx.arc(s1.x, s1.y, marginPx, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Label Margin Ring
+                ctx.fillStyle = state.pairLabel === 0 ? '#fda4af' : '#94a3b8';
+                ctx.font = '500 11px JetBrains Mono';
+                ctx.fillText(`Margin Ring m = ${state.margin.toFixed(2)}`, s1.x + 8, s1.y - marginPx - 6);
+                ctx.restore();
+
+                // Connection Line between x1 and x2
+                ctx.save();
+                ctx.strokeStyle = state.pairLabel === 1 ? '#34d39988' : '#f43f5e88';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(s1.x, s1.y);
+                ctx.lineTo(s2.x, s2.y);
+                ctx.stroke();
+
+                // Distance Pill at Midpoint
+                const midX = (s1.x + s2.x) / 2;
+                const midY = (s1.y + s2.y) / 2;
+                ctx.fillStyle = '#0f172acc';
+                ctx.fillRect(midX - 36, midY - 22, 72, 18);
+                ctx.fillStyle = '#e2e8f0';
+                ctx.font = '600 11px JetBrains Mono';
+                ctx.textAlign = 'center';
+                ctx.fillText(`d = ${metrics.d.toFixed(2)}`, midX, midY - 9);
+                ctx.restore();
+
+            } else {
+                // TRIPLET MODE: Concentric Rings around Anchor A (p1)
+                const rAP = metrics.dAP * scale;
+                const rMargin = (metrics.dAP + state.margin) * scale;
+
+                ctx.save();
+                // Semi-hard annulus shading (between rAP and rAP + alpha)
+                ctx.fillStyle = 'rgba(245, 158, 11, 0.08)';
+                ctx.beginPath();
+                ctx.arc(s1.x, s1.y, rMargin, 0, Math.PI * 2);
+                ctx.arc(s1.x, s1.y, rAP, 0, Math.PI * 2, true);
+                ctx.fill();
+
+                // Hard negative inner circle shading (inside rAP)
+                ctx.fillStyle = 'rgba(244, 63, 94, 0.09)';
+                ctx.beginPath();
+                ctx.arc(s1.x, s1.y, rAP, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Inner Ring: d(A, P)
+                ctx.strokeStyle = 'rgba(52, 211, 153, 0.7)';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath();
+                ctx.arc(s1.x, s1.y, rAP, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Outer Ring: d(A, P) + alpha
+                ctx.strokeStyle = 'rgba(251, 191, 36, 0.8)';
+                ctx.lineWidth = 1.8;
+                ctx.setLineDash([7, 5]);
+                ctx.beginPath();
+                ctx.arc(s1.x, s1.y, rMargin, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // Zone Labels
+                ctx.font = '500 10px JetBrains Mono';
+                ctx.fillStyle = '#6ee7b7';
+                ctx.fillText(`d(A,P) = ${metrics.dAP.toFixed(2)}`, s1.x + 6, s1.y - rAP + 13);
+                ctx.fillStyle = '#fcd34d';
+                ctx.fillText(`d(A,P) + α = ${(metrics.dAP + state.margin).toFixed(2)}`, s1.x + 6, s1.y - rMargin - 6);
+
+                // Lines A->P and A->N
+                ctx.setLineDash([]);
+                ctx.strokeStyle = 'rgba(52, 211, 153, 0.6)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(s1.x, s1.y); ctx.lineTo(s2.x, s2.y);
+                ctx.stroke();
+
+                ctx.strokeStyle = 'rgba(244, 63, 94, 0.6)';
+                ctx.beginPath();
+                ctx.moveTo(s1.x, s1.y); ctx.lineTo(s3.x, s3.y);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            // 3. Draw Gaussian Uncertainty Clouds for Active Points
+            const activePts = state.mode === 'siamese' ? [p1, p2] : [p1, p2, p3];
+            activePts.forEach(pt => {
+                drawGaussianCloud(ctx, pt, pt.color, state.sigma2);
+            });
+
+            // 4. Draw Force Vectors (-nabla L)
+            const forceScalePx = 42; // Visual scaling for gradient arrow
+            const g1 = metrics.gradients.p1;
+            const g2 = metrics.gradients.p2;
+            drawArrow(ctx, s1.x, s1.y, s1.x + g1.x * forceScalePx, s1.y - g1.y * forceScalePx, '#fbbf24', 3);
+            drawArrow(ctx, s2.x, s2.y, s2.x + g2.x * forceScalePx, s2.y - g2.y * forceScalePx, '#fbbf24', 3);
+            if (state.mode === 'triplet') {
+                const g3 = metrics.gradients.p3;
+                drawArrow(ctx, s3.x, s3.y, s3.x + g3.x * forceScalePx, s3.y - g3.y * forceScalePx, '#fbbf24', 3);
+            }
+
+            // 5. Draw Draggable Embedding Nodes
+            activePts.forEach((pt, idx) => {
+                const s = worldToScreen(pt.x, pt.y);
+                const isHover = state.hoverPoint === pt || state.draggingPoint === pt;
+
+                ctx.save();
+                // Outer glow
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, isHover ? 16 : 12, 0, Math.PI * 2);
+                ctx.fillStyle = pt.color + '33';
+                ctx.fill();
+
+                // Main circle
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, isHover ? 10 : 8.5, 0, Math.PI * 2);
+                ctx.fillStyle = pt.color;
+                ctx.fill();
+                ctx.lineWidth = 2.2;
+                ctx.strokeStyle = '#ffffff';
+                ctx.stroke();
+
+                // Node Label Tag
+                const tagText = state.mode === 'siamese'
+                    ? (idx === 0 ? 'x₁ (μ₁)' : (state.pairLabel === 1 ? 'x₂ (Same)' : 'x₂ (Diff)'))
+                    : (idx === 0 ? 'Anchor (A)' : idx === 1 ? 'Positive (P)' : 'Negative (N)');
+
+                ctx.font = '600 11px Inter';
+                const textW = ctx.measureText(tagText).width;
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+                ctx.beginPath();
+                ctx.roundRect(s.x - textW / 2 - 6, s.y + 13, textW + 12, 20, 5);
+                ctx.fill();
+                ctx.strokeStyle = pt.color + '88';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                ctx.fillStyle = '#f8fafc';
+                ctx.textAlign = 'center';
+                ctx.fillText(tagText, s.x, s.y + 27);
+                ctx.restore();
+            });
+        }
+
+        /***********************************************************************
+         * DYNAMIC SVG SHARED-WEIGHT NETWORK ARCHITECTURE RENDERER
+         ***********************************************************************/
+        function renderArchitectureSVG(metrics) {
+            const svg = document.getElementById('archSvg');
+            if (state.mode === 'siamese') {
+                const p2Color = state.pairLabel === 1 ? '#34d399' : '#f43f5e';
+                svg.innerHTML = `
+                    <!-- Shared Weight Dashed Box -->
+                    <rect x="130" y="18" width="160" height="194" rx="12" fill="#1e293b" fill-opacity="0.4" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="5,5"/>
+                    <text x="210" y="118" text-anchor="middle" fill="#818cf8" font-size="11" font-family="JetBrains Mono" font-weight="600">Shared Weights θ</text>
+                    <line x1="210" y1="82" x2="210" y2="104" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="3,3"/>
+                    <line x1="210" y1="125" x2="210" y2="148" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="3,3"/>
+
+                    <!-- Top Branch (x1) -->
+                    <rect x="18" y="38" width="70" height="40" rx="8" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/>
+                    <text x="53" y="62" text-anchor="middle" fill="#38bdf8" font-size="12" font-weight="bold">Input x₁</text>
+                    <line x1="88" y1="58" x2="145" y2="58" stroke="#475569" stroke-width="2"/>
+
+                    <rect x="145" y="36" width="130" height="44" rx="8" fill="#1e1b4b" stroke="#818cf8" stroke-width="1.8"/>
+                    <text x="210" y="55" text-anchor="middle" fill="#e0e7ff" font-size="11" font-weight="600">Encoder f_θ(x₁)</text>
+                    <text x="210" y="70" text-anchor="middle" fill="#a5b4fc" font-size="9" font-family="JetBrains Mono">→ (μ₁, Σ₁)</text>
+
+                    <!-- Bottom Branch (x2) -->
+                    <rect x="18" y="150" width="70" height="40" rx="8" fill="#0f172a" stroke="${p2Color}" stroke-width="2"/>
+                    <text x="53" y="174" text-anchor="middle" fill="${p2Color}" font-size="12" font-weight="bold">Input x₂</text>
+                    <line x1="88" y1="170" x2="145" y2="170" stroke="#475569" stroke-width="2"/>
+
+                    <rect x="145" y="148" width="130" height="44" rx="8" fill="#1e1b4b" stroke="#818cf8" stroke-width="1.8"/>
+                    <text x="210" y="167" text-anchor="middle" fill="#e0e7ff" font-size="11" font-weight="600">Encoder f_θ(x₂)</text>
+                    <text x="210" y="182" text-anchor="middle" fill="#a5b4fc" font-size="9" font-family="JetBrains Mono">→ (μ₂, Σ₂)</text>
+
+                    <!-- Lines to Energy / Distance Head -->
+                    <path d="M 275 58 C 310 58, 310 114, 340 114" fill="none" stroke="#38bdf8" stroke-width="2"/>
+                    <path d="M 275 170 C 310 170, 310 114, 340 114" fill="none" stroke="${p2Color}" stroke-width="2"/>
+
+                    <!-- Probabilistic Metric Head -->
+                    <rect x="340" y="72" width="142" height="84" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.8"/>
+                    <text x="411" y="94" text-anchor="middle" fill="#94a3b8" font-size="10" font-weight="600">ENERGY &amp; LIKELIHOOD</text>
+                    <text x="411" y="114" text-anchor="middle" fill="#f8fafc" font-size="12" font-family="JetBrains Mono" font-weight="bold">d = ${metrics.d.toFixed(2)}</text>
+                    <text x="411" y="132" text-anchor="middle" fill="#34d399" font-size="11" font-family="JetBrains Mono">P(y=1) = ${(metrics.prob * 100).toFixed(1)}%</text>
+                    <text x="411" y="148" text-anchor="middle" fill="#fb7185" font-size="11" font-family="JetBrains Mono">Loss ℒ = ${metrics.loss.toFixed(2)}</text>
+                `;
+            } else {
+                // Triplet 3-Branch Shared Weight SVG
+                svg.innerHTML = `
+                    <!-- Shared Weight Dashed Box -->
+                    <rect x="125" y="10" width="150" height="210" rx="12" fill="#1e293b" fill-opacity="0.4" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="5,5"/>
+                    
+                    <!-- Branch 1: Positive P -->
+                    <rect x="16" y="22" width="72" height="34" rx="7" fill="#0f172a" stroke="#34d399" stroke-width="1.8"/>
+                    <text x="52" y="43" text-anchor="middle" fill="#34d399" font-size="11" font-weight="bold">Positive P</text>
+                    <line x1="88" y1="39" x2="138" y2="39" stroke="#475569" stroke-width="1.8"/>
+                    <rect x="138" y="21" width="124" height="36" rx="7" fill="#1e1b4b" stroke="#818cf8" stroke-width="1.5"/>
+                    <text x="200" y="43" text-anchor="middle" fill="#e0e7ff" font-size="11" font-weight="600">f_θ(P) → z_P</text>
+
+                    <!-- Branch 2: Anchor A -->
+                    <rect x="16" y="96" width="72" height="34" rx="7" fill="#0f172a" stroke="#38bdf8" stroke-width="1.8"/>
+                    <text x="52" y="117" text-anchor="middle" fill="#38bdf8" font-size="11" font-weight="bold">Anchor A</text>
+                    <line x1="88" y1="113" x2="138" y2="113" stroke="#475569" stroke-width="1.8"/>
+                    <rect x="138" y="95" width="124" height="36" rx="7" fill="#1e1b4b" stroke="#818cf8" stroke-width="1.5"/>
+                    <text x="200" y="117" text-anchor="middle" fill="#e0e7ff" font-size="11" font-weight="600">f_θ(A) → z_A</text>
+
+                    <!-- Branch 3: Negative N -->
+                    <rect x="16" y="170" width="72" height="34" rx="7" fill="#0f172a" stroke="#f43f5e" stroke-width="1.8"/>
+                    <text x="52" y="191" text-anchor="middle" fill="#f43f5e" font-size="11" font-weight="bold">Negative N</text>
+                    <line x1="88" y1="187" x2="138" y2="187" stroke="#475569" stroke-width="1.8"/>
+                    <rect x="138" y="169" width="124" height="36" rx="7" fill="#1e1b4b" stroke="#818cf8" stroke-width="1.5"/>
+                    <text x="200" y="191" text-anchor="middle" fill="#e0e7ff" font-size="11" font-weight="600">f_θ(N) → z_N</text>
+
+                    <!-- Shared weights connectors -->
+                    <line x1="200" y1="57" x2="200" y2="95" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="3,3"/>
+                    <line x1="200" y1="131" x2="200" y2="169" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="3,3"/>
+
+                    <!-- Connections to Triplet Loss Box -->
+                    <path d="M 262 39 C 300 39, 300 95, 336 95" fill="none" stroke="#34d399" stroke-width="1.8"/>
+                    <line x1="262" y1="113" x2="336" y2="113" stroke="#38bdf8" stroke-width="1.8"/>
+                    <path d="M 262 187 C 300 187, 300 131, 336 131" fill="none" stroke="#f43f5e" stroke-width="1.8"/>
+
+                    <!-- Triplet Ranking Head -->
+                    <rect x="336" y="56" width="148" height="114" rx="10" fill="#0f172a" stroke="#f59e0b" stroke-width="1.8"/>
+                    <text x="410" y="76" text-anchor="middle" fill="#94a3b8" font-size="9.5" font-weight="600">TRIPLET RANKING HEAD</text>
+                    <text x="410" y="96" text-anchor="middle" fill="#34d399" font-size="11" font-family="JetBrains Mono">d(A,P) = ${metrics.dAP.toFixed(2)}</text>
+                    <text x="410" y="114" text-anchor="middle" fill="#f43f5e" font-size="11" font-family="JetBrains Mono">d(A,N) = ${metrics.dAN.toFixed(2)}</text>
+                    <text x="410" y="134" text-anchor="middle" fill="#38bdf8" font-size="10.5" font-family="JetBrains Mono">P(d_AP &lt; d_AN): ${(metrics.prob * 100).toFixed(0)}%</text>
+                    <text x="410" y="154" text-anchor="middle" fill="#fbbf24" font-size="11" font-family="JetBrains Mono" font-weight="bold">Loss ℒ = ${metrics.loss.toFixed(2)}</text>
+                `;
+            }
+        }
+
+        /***********************************************************************
+         * REAL-TIME LOSS LANDSCAPE & PROBABILITY CURVE CHART
+         ***********************************************************************/
+        const lossChartCanvas = document.getElementById('lossChartCanvas');
+        const chartCtx = lossChartCanvas.getContext('2d');
+
+        function renderLossChart(metrics) {
+            const w = lossChartCanvas.width;
+            const h = lossChartCanvas.height;
+            chartCtx.clearRect(0, 0, w, h);
+
+            const padL = 42, padR = 20, padT = 22, padB = 32;
+            const plotW = w - padL - padR;
+            const plotH = h - padT - padB;
+
+            // Axes
+            chartCtx.strokeStyle = '#334155';
+            chartCtx.lineWidth = 1.2;
+            chartCtx.beginPath();
+            chartCtx.moveTo(padL, padT);
+            chartCtx.lineTo(padL, h - padB);
+            chartCtx.lineTo(w - padR, h - padB);
+            chartCtx.stroke();
+
+            const maxX = 4.0;
+            const maxY = 2.6;
+
+            function toPlot(xVal, yVal) {
+                return {
+                    x: padL + (xVal / maxX) * plotW,
+                    y: (h - padB) - Math.min(1.05, Math.max(0, yVal / maxY)) * plotH
+                };
+            }
+
+            if (state.mode === 'siamese') {
+                const m = state.margin;
+                const sigma2 = state.sigma2;
+                const tau = state.temperature;
+
+                // 1. Draw Margin Vertical Threshold Line
+                const mPt = toPlot(m, 0);
+                chartCtx.save();
+                chartCtx.strokeStyle = '#94a3b866';
+                chartCtx.setLineDash([4, 4]);
+                chartCtx.beginPath();
+                chartCtx.moveTo(mPt.x, padT);
+                chartCtx.lineTo(mPt.x, h - padB);
+                chartCtx.stroke();
+                chartCtx.fillStyle = '#94a3b8';
+                chartCtx.font = '10px JetBrains Mono';
+                chartCtx.fillText(`m=${m.toFixed(1)}`, mPt.x - 16, padT - 6);
+                chartCtx.restore();
+
+                // 2. Plot Probabilistic Match Curve P(y=1 | d) (scaled to chart height)
+                chartCtx.save();
+                chartCtx.strokeStyle = '#38bdf8';
+                chartCtx.lineWidth = 2;
+                chartCtx.setLineDash([5, 4]);
+                chartCtx.beginPath();
+                for (let i = 0; i <= 100; i++) {
+                    const dVal = (i / 100) * maxX;
+                    const pSame = sigmoid(((m * m) - dVal * dVal) / tau);
+                    const pt = toPlot(dVal, pSame * 2.0); // Scale 0..1 prob to 0..2.0 height
+                    if (i === 0) chartCtx.moveTo(pt.x, pt.y);
+                    else chartCtx.lineTo(pt.x, pt.y);
+                }
+                chartCtx.stroke();
+                chartCtx.restore();
+
+                // 3. Plot Active Contrastive Loss Curve (for current y=1 or y=0)
+                chartCtx.save();
+                chartCtx.strokeStyle = state.pairLabel === 1 ? '#34d399' : '#f43f5e';
+                chartCtx.lineWidth = 2.5;
+                chartCtx.beginPath();
+                for (let i = 0; i <= 100; i++) {
+                    const dVal = (i / 100) * maxX;
+                    let lVal = 0;
+                    if (state.pairLabel === 1) {
+                        lVal = 0.5 * (dVal * dVal) / (1 + sigma2) + 0.35 * Math.log(1 + sigma2);
+                    } else {
+                        const diff = Math.max(0, m - dVal);
+                        lVal = 0.5 * (diff * diff) / (1 + sigma2);
+                    }
+                    const pt = toPlot(dVal, lVal);
+                    if (i === 0) chartCtx.moveTo(pt.x, pt.y);
+                    else chartCtx.lineTo(pt.x, pt.y);
+                }
+                chartCtx.stroke();
+                chartCtx.restore();
+
+                // 4. Plot Current Operating Point Marker on both curves
+                const curD = Math.min(maxX, metrics.d);
+                const curLossPt = toPlot(curD, metrics.loss);
+                const curProbPt = toPlot(curD, metrics.prob * 2.0);
+
+                // Vertical tracker line
+                chartCtx.strokeStyle = '#ffffff44';
+                chartCtx.beginPath();
+                chartCtx.moveTo(curLossPt.x, padT);
+                chartCtx.lineTo(curLossPt.x, h - padB);
+                chartCtx.stroke();
+
+                // Loss Dot
+                chartCtx.fillStyle = state.pairLabel === 1 ? '#34d399' : '#f43f5e';
+                chartCtx.beginPath();
+                chartCtx.arc(curLossPt.x, curLossPt.y, 5.5, 0, Math.PI * 2);
+                chartCtx.fill();
+                chartCtx.strokeStyle = '#fff';
+                chartCtx.stroke();
+
+                // Prob Dot
+                chartCtx.fillStyle = '#38bdf8';
+                chartCtx.beginPath();
+                chartCtx.arc(curProbPt.x, curProbPt.y, 4.5, 0, Math.PI * 2);
+                chartCtx.fill();
+
+                // X-axis label
+                chartCtx.fillStyle = '#94a3b8';
+                chartCtx.font = '11px Inter';
+                chartCtx.fillText('Distance d(z₁, z₂)', w / 2 - 40, h - 8);
+
+            } else {
+                // TRIPLET CHART: X-axis is d(A, N) from 0 to 4.0, holding current d(A, P) fixed
+                const dAP = metrics.dAP;
+                const alpha = state.margin;
+                const sigma2 = state.sigma2;
+                const effectiveTemp = state.temperature * (1 + 2 * sigma2);
+
+                // Vertical Zone Markers: d(A,P) and d(A,P) + alpha
+                const pAP = toPlot(Math.min(maxX, dAP), 0);
+                const pMar = toPlot(Math.min(maxX, dAP + alpha), 0);
+
+                chartCtx.save();
+                chartCtx.setLineDash([4, 4]);
+                chartCtx.strokeStyle = '#34d39988';
+                chartCtx.beginPath(); chartCtx.moveTo(pAP.x, padT); chartCtx.lineTo(pAP.x, h - padB); chartCtx.stroke();
+                chartCtx.fillStyle = '#34d399'; chartCtx.font = '9.5px JetBrains Mono';
+                chartCtx.fillText('d(A,P)', pAP.x - 16, padT - 5);
+
+                chartCtx.strokeStyle = '#fbbf2488';
+                chartCtx.beginPath(); chartCtx.moveTo(pMar.x, padT); chartCtx.lineTo(pMar.x, h - padB); chartCtx.stroke();
+                chartCtx.fillStyle = '#fbbf24';
+                chartCtx.fillText('d(A,P)+α', pMar.x - 22, padT - 5);
+                chartCtx.restore();
+
+                // Plot Triplet Probabilistic Ranking Likelihood P(d(A,P) < d(A,N))
+                chartCtx.save();
+                chartCtx.strokeStyle = '#38bdf8';
+                chartCtx.lineWidth = 2;
+                chartCtx.setLineDash([5, 4]);
+                chartCtx.beginPath();
+                for (let i = 0; i <= 100; i++) {
+                    const dANVal = (i / 100) * maxX;
+                    const pRank = sigmoid((dANVal * dANVal - dAP * dAP - alpha) / effectiveTemp);
+                    const pt = toPlot(dANVal, pRank * 2.0);
+                    if (i === 0) chartCtx.moveTo(pt.x, pt.y);
+                    else chartCtx.lineTo(pt.x, pt.y);
+                }
+                chartCtx.stroke();
+                chartCtx.restore();
+
+                // Plot Triplet Hinge Loss Curve vs d(A,N)
+                chartCtx.save();
+                chartCtx.strokeStyle = '#f43f5e';
+                chartCtx.lineWidth = 2.5;
+                chartCtx.beginPath();
+                for (let i = 0; i <= 100; i++) {
+                    const dANVal = (i / 100) * maxX;
+                    const lVal = Math.max(0, dAP - dANVal + alpha) / (1 + sigma2 * 0.5);
+                    const pt = toPlot(dANVal, lVal);
+                    if (i === 0) chartCtx.moveTo(pt.x, pt.y);
+                    else chartCtx.lineTo(pt.x, pt.y);
+                }
+                chartCtx.stroke();
+                chartCtx.restore();
+
+                // Current d(A,N) Operating Point
+                const curDAN = Math.min(maxX, metrics.dAN);
+                const curLossPt = toPlot(curDAN, metrics.loss);
+                const curProbPt = toPlot(curDAN, metrics.prob * 2.0);
+
+                chartCtx.fillStyle = '#f43f5e';
+                chartCtx.beginPath();
+                chartCtx.arc(curLossPt.x, curLossPt.y, 5.5, 0, Math.PI * 2);
+                chartCtx.fill();
+                chartCtx.strokeStyle = '#fff';
+                chartCtx.stroke();
+
+                chartCtx.fillStyle = '#38bdf8';
+                chartCtx.beginPath();
+                chartCtx.arc(curProbPt.x, curProbPt.y, 4.5, 0, Math.PI * 2);
+                chartCtx.fill();
+
+                chartCtx.fillStyle = '#94a3b8';
+                chartCtx.font = '11px Inter';
+                chartCtx.fillText('Negative Distance d(A, N)', w / 2 - 55, h - 8);
+            }
+
+            // Legend in top right of chart
+            chartCtx.fillStyle = '#e2e8f0';
+            chartCtx.font = '10px Inter';
+            chartCtx.fillText('— Loss ℒ', w - 125, padT + 10);
+            chartCtx.fillStyle = '#38bdf8';
+            chartCtx.fillText('--- Prob P(·)', w - 68, padT + 10);
+        }
+
+        /***********************************************************************
+         * UI SYNCHRONIZATION & MATH DISPLAY
+         ***********************************************************************/
+        function updateUI() {
+            const metrics = computeMetricsAndGradients();
+
+            // Update Badges
+            if (state.mode === 'siamese') {
+                document.getElementById('badge-dist-label').textContent = 'Euclidean d(z₁, z₂):';
+                document.getElementById('badge-dist-val').textContent = metrics.d.toFixed(2);
+                document.getElementById('badge-prob-label').textContent = 'P(y=1 | x₁, x₂):';
+            } else {
+                document.getElementById('badge-dist-label').textContent = 'd(A,P) / d(A,N):';
+                document.getElementById('badge-dist-val').textContent = `${metrics.dAP.toFixed(2)} / ${metrics.dAN.toFixed(2)}`;
+                document.getElementById('badge-prob-label').textContent = 'P(d_AP < d_AN):';
+
+                // Update Triplet Regime Badge
+                const pill = document.getElementById('triplet-regime-pill');
+                pill.textContent = metrics.regime;
+                pill.className = `px-2 py-0.5 text-[11px] font-mono font-bold rounded border bg-${metrics.regimeColor}-500/20 text-${metrics.regimeColor}-300 border-${metrics.regimeColor}-500/40`;
+            }
+
+            document.getElementById('badge-loss-val').textContent = metrics.loss.toFixed(3);
+            document.getElementById('badge-prob-val').textContent = (metrics.prob * 100).toFixed(1) + '%';
+
+            // Update Math Formula Box
+            const mathBox = document.getElementById('math-formula-box');
+            if (state.mode === 'siamese') {
+                mathBox.innerHTML = `
+                    <div class="text-sky-400 font-semibold">1. Probabilistic Gaussian Embedding:</div>
+                    <div class="pl-2 text-slate-300">zᵢ ~ 𝒩(μ_θ(xᵢ), σ²I),  σ² = ${state.sigma2.toFixed(2)}</div>
+                    <div class="text-emerald-400 font-semibold mt-1">2. Energy-Based Match Likelihood:</div>
+                    <div class="pl-2 text-slate-300">P(y=1|x₁,x₂) = σ((m² - d²) / τ) = <span class="text-white font-bold">${(metrics.prob * 100).toFixed(1)}%</span></div>
+                    <div class="text-rose-400 font-semibold mt-1">3. Contrastive Metric Loss (y = ${state.pairLabel}):</div>
+                    <div class="pl-2 text-slate-300">ℒ = y·½d² + (1-y)·½max(0, m - d)² = <span class="text-white font-bold">${metrics.loss.toFixed(3)}</span></div>
+                `;
+            } else {
+                mathBox.innerHTML = `
+                    <div class="text-sky-400 font-semibold">1. Relative Ranking Probability:</div>
+                    <div class="pl-2 text-slate-300">P(d(A,P) &lt; d(A,N)) = σ((d_AN² - d_AP² - α) / τ_Σ) = <span class="text-white font-bold">${(metrics.prob * 100).toFixed(1)}%</span></div>
+                    <div class="text-amber-400 font-semibold mt-1">2. Triplet Margin Loss (α = ${state.margin.toFixed(2)}):</div>
+                    <div class="pl-2 text-slate-300">ℒ(A,P,N) = max(0, d(A,P) - d(A,N) + α) = <span class="text-white font-bold">${metrics.loss.toFixed(3)}</span></div>
+                    <div class="text-purple-400 font-semibold mt-1">3. Active Mining Regime:</div>
+                    <div class="pl-2 text-slate-300">Status: <span class="text-white font-bold">${metrics.regime}</span></div>
+                `;
+            }
+
+            renderLatentCanvas(metrics);
+            renderArchitectureSVG(metrics);
+            renderLossChart(metrics);
+        }
+
+        /***********************************************************************
+         * INTERACTION HANDLERS & OPTIMIZATION LOOP
+         ***********************************************************************/
+        function switchMode(newMode, resetCoords = true) {
+            state.mode = newMode;
+
+            // Update Mode Tab styling
+            const btnSiam = document.getElementById('btn-mode-siamese');
+            const btnTrip = document.getElementById('btn-mode-triplet');
+            const activeClass = "flex-1 lg:flex-initial px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-md";
+            const inactiveClass = "flex-1 lg:flex-initial px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 text-slate-400 hover:text-white hover:bg-slate-800/60";
+
+            if (newMode === 'siamese') {
+                btnSiam.className = activeClass;
+                btnTrip.className = inactiveClass;
+                document.getElementById('ctrl-siamese-group').classList.remove('hidden');
+                document.getElementById('ctrl-triplet-group').classList.add('hidden');
+                document.getElementById('legend-pt3-wrap').classList.add('hidden');
+                document.getElementById('label-margin').textContent = 'Contrastive Margin (m)';
+                document.getElementById('chart-x-axis-badge').textContent = 'vs. Distance d(z₁, z₂)';
+                if (resetCoords) {
+                    state.margin = 1.80;
+                    state.points.p1.x = -0.9; state.points.p1.y = 0.1;
+                    state.points.p2.x = 0.7;  state.points.p2.y = 0.5;
+                }
+            } else {
+                btnTrip.className = activeClass;
+                btnSiam.className = inactiveClass;
+                document.getElementById('ctrl-siamese-group').classList.add('hidden');
+                document.getElementById('ctrl-triplet-group').classList.remove('hidden');
+                document.getElementById('legend-pt3-wrap').classList.remove('hidden');
+                document.getElementById('label-margin').textContent = 'Triplet Margin (α)';
+                document.getElementById('chart-x-axis-badge').textContent = 'vs. Negative Dist d(A, N)';
+                if (resetCoords) {
+                    state.margin = 1.15;
+                    state.points.p1.x = -0.8; state.points.p1.y = 0.0;
+                    state.points.p2.x = 0.3;  state.points.p2.y = 0.7;
+                    state.points.p3.x = 0.5;  state.points.p3.y = -0.6;
+                }
+            }
+            syncControlsFromState();
+            updateUI();
+        }
+
+        function setPairLabel(yVal) {
+            state.pairLabel = yVal;
+            state.points.p2.color = yVal === 1 ? '#34d399' : '#f43f5e';
+            syncControlsFromState();
+            updateUI();
+        }
+
+        function setTripletRegime(type) {
+            const A = state.points.p1;
+            const P = state.points.p2;
+            const dAP = euclideanDist(A, P);
+            const alpha = state.margin;
+
+            let targetDist = dAP * 0.6; // Hard
+            if (type === 'semihard') targetDist = dAP + alpha * 0.55;
+            if (type === 'easy') targetDist = dAP + alpha * 1.35;
+
+            const angle = -0.65;
+            state.points.p3.x = Math.max(-3.1, Math.min(3.1, A.x + targetDist * Math.cos(angle)));
+            state.points.p3.y = Math.max(-1.8, Math.min(1.8, A.y + targetDist * Math.sin(angle)));
+            updateUI();
+        }
+
+        function updateHyperparams() {
+            state.margin = parseFloat(document.getElementById('slider-margin').value);
+            state.sigma2 = parseFloat(document.getElementById('slider-sigma').value);
+            state.temperature = parseFloat(document.getElementById('slider-temp').value);
+            syncControlsFromState();
+            updateUI();
+        }
+
+        function syncControlsFromState() {
+            document.getElementById('slider-margin').value = state.margin;
+            document.getElementById('val-margin').textContent = state.margin.toFixed(2);
+            document.getElementById('slider-sigma').value = state.sigma2;
+            document.getElementById('val-sigma').textContent = state.sigma2.toFixed(2);
+            document.getElementById('slider-temp').value = state.temperature;
+            document.getElementById('val-temp').textContent = state.temperature.toFixed(2);
+
+            const btnPos = document.getElementById('btn-pair-pos');
+            const btnNeg = document.getElementById('btn-pair-neg');
+            if (state.pairLabel === 1) {
+                btnPos.className = "py-2 px-3 rounded-xl font-semibold text-xs flex items-center justify-center gap-2 border transition-all bg-emerald-500/20 border-emerald-500 text-emerald-300 shadow-lg shadow-emerald-500/10";
+                btnNeg.className = "py-2 px-3 rounded-xl font-semibold text-xs flex items-center justify-center gap-2 border transition-all bg-slate-800/60 border-slate-700 text-slate-400 hover:text-white";
+                state.points.p2.color = '#34d399';
+            } else {
+                btnNeg.className = "py-2 px-3 rounded-xl font-semibold text-xs flex items-center justify-center gap-2 border transition-all bg-rose-500/20 border-rose-500 text-rose-300 shadow-lg shadow-rose-500/10";
+                btnPos.className = "py-2 px-3 rounded-xl font-semibold text-xs flex items-center justify-center gap-2 border transition-all bg-slate-800/60 border-slate-700 text-slate-400 hover:text-white";
+                state.points.p2.color = '#f43f5e';
+            }
+        }
+
+        function stepGradient(lr = 0.14) {
+            const metrics = computeMetricsAndGradients();
+            const g = metrics.gradients;
+            const clampX = x => Math.max(-3.2, Math.min(3.2, x));
+            const clampY = y => Math.max(-1.9, Math.min(1.9, y));
+
+            state.points.p1.x = clampX(state.points.p1.x + g.p1.x * lr);
+            state.points.p1.y = clampY(state.points.p1.y + g.p1.y * lr);
+            state.points.p2.x = clampX(state.points.p2.x + g.p2.x * lr);
+            state.points.p2.y = clampY(state.points.p2.y + g.p2.y * lr);
+
+            if (state.mode === 'triplet') {
+                state.points.p3.x = clampX(state.points.p3.x + g.p3.x * lr);
+                state.points.p3.y = clampY(state.points.p3.y + g.p3.y * lr);
+            }
+
+            updateUI();
+            return metrics.loss;
+        }
+
+        function toggleAutoOptimize() {
+            state.autoOptimizing = !state.autoOptimizing;
+            const btnText = document.getElementById('text-auto-opt');
+            const statusText = document.getElementById('grad-status-text');
+
+            if (state.autoOptimizing) {
+                btnText.textContent = 'Stop Optimization';
+                statusText.textContent = 'Optimizing...';
+                statusText.className = 'text-[11px] font-mono text-emerald-400 animate-pulse';
+                runAutoLoop();
+            } else {
+                btnText.textContent = 'Auto-Optimize';
+                statusText.textContent = 'Paused';
+                statusText.className = 'text-[11px] font-mono text-slate-400';
+                if (state.animFrameId) cancelAnimationFrame(state.animFrameId);
+            }
+        }
+
+        function runAutoLoop() {
+            if (!state.autoOptimizing) return;
+            const loss = stepGradient(0.025);
+            const metrics = computeMetricsAndGradients();
+            const gradMag = Math.hypot(metrics.gradients.p1.x, metrics.gradients.p1.y) +
+                            Math.hypot(metrics.gradients.p2.x, metrics.gradients.p2.y);
+
+            if (gradMag < 0.015) {
+                toggleAutoOptimize();
+                document.getElementById('grad-status-text').textContent = 'Converged (∇ℒ ≈ 0)';
+                return;
+            }
+            state.animFrameId = requestAnimationFrame(runAutoLoop);
+        }
+
+        function resetPositions() {
+            if (state.autoOptimizing) toggleAutoOptimize();
+            switchMode(state.mode, true);
+        }
+
+        /***********************************************************************
+         * GUIDED LESSON TOUR CONTROLLER
+         ***********************************************************************/
+        function renderLesson() {
+            const lesson = lessons[state.lessonIndex];
+            document.getElementById('tour-step-badge').textContent = `Lesson ${state.lessonIndex + 1} / ${lessons.length}`;
+            document.getElementById('tour-title').textContent = lesson.title;
+            document.getElementById('tour-body').innerHTML = lesson.body;
+            document.getElementById('tour-action').textContent = lesson.action;
+        }
+
+        function nextLesson() {
+            state.lessonIndex = (state.lessonIndex + 1) % lessons.length;
+            renderLesson();
+            applyLessonPreset();
+        }
+
+        function prevLesson() {
+            state.lessonIndex = (state.lessonIndex - 1 + lessons.length) % lessons.length;
+            renderLesson();
+            applyLessonPreset();
+        }
+
+        function applyLessonPreset() {
+            if (state.autoOptimizing) toggleAutoOptimize();
+            lessons[state.lessonIndex].preset();
+            updateUI();
+        }
+
+        /***********************************************************************
+         * CANVAS POINTER / TOUCH DRAGGING EVENTS
+         ***********************************************************************/
+        function getPointerWorldPos(evt) {
+            const rect = latentCanvas.getBoundingClientRect();
+            const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+            const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+            const sx = (clientX - rect.left) * (latentCanvas.width / rect.width);
+            const sy = (clientY - rect.top) * (latentCanvas.height / rect.height);
+            return screenToWorld(sx, sy);
+        }
+
+        function findNearestPoint(wPos) {
+            const candidates = state.mode === 'siamese'
+                ? [state.points.p1, state.points.p2]
+                : [state.points.p1, state.points.p2, state.points.p3];
+
+            let closest = null;
+            let minDist = 0.42; // Hit radius in world units
+            candidates.forEach(pt => {
+                const d = euclideanDist(wPos, pt);
+                if (d < minDist) {
+                    minDist = d;
+                    closest = pt;
+                }
+            });
+            return closest;
+        }
+
+        latentCanvas.addEventListener('mousedown', evt => {
+            const wPos = getPointerWorldPos(evt);
+            const hit = findNearestPoint(wPos);
+            if (hit) state.draggingPoint = hit;
+        });
+
+        window.addEventListener('mousemove', evt => {
+            if (!latentCanvas) return;
+            const wPos = getPointerWorldPos(evt);
+            if (state.draggingPoint) {
+                state.draggingPoint.x = Math.max(-3.25, Math.min(3.25, wPos.x));
+                state.draggingPoint.y = Math.max(-1.95, Math.min(1.95, wPos.y));
+                updateUI();
+            } else {
+                const hit = findNearestPoint(wPos);
+                if (hit !== state.hoverPoint) {
+                    state.hoverPoint = hit;
+                    latentCanvas.style.cursor = hit ? 'pointer' : 'grab';
+                    updateUI();
+                }
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            state.draggingPoint = null;
+        });
+
+        // Touch support for mobile/tablet
+        latentCanvas.addEventListener('touchstart', evt => {
+            const wPos = getPointerWorldPos(evt);
+            const hit = findNearestPoint(wPos);
+            if (hit) {
+                state.draggingPoint = hit;
+                evt.preventDefault();
+            }
+        }, { passive: false });
+
+        latentCanvas.addEventListener('touchmove', evt => {
+            if (state.draggingPoint) {
+                const wPos = getPointerWorldPos(evt);
+                state.draggingPoint.x = Math.max(-3.25, Math.min(3.25, wPos.x));
+                state.draggingPoint.y = Math.max(-1.95, Math.min(1.95, wPos.y));
+                updateUI();
+                evt.preventDefault();
+            }
+        }, { passive: false });
+
+        window.addEventListener('touchend', () => {
+            state.draggingPoint = null;
+        });
+
+        /***********************************************************************
+         * RESPONSIVE CANVAS RESIZING & INITIALIZATION
+         ***********************************************************************/
+        function resizeCanvases() {
+            const latentRect = latentCanvas.parentElement.getBoundingClientRect();
+            latentCanvas.width = latentRect.width * window.devicePixelRatio;
+            latentCanvas.height = latentRect.height * window.devicePixelRatio;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+            latentCanvas.width = latentRect.width;
+            latentCanvas.height = latentRect.height;
+
+            const chartRect = lossChartCanvas.parentElement.getBoundingClientRect();
+            lossChartCanvas.width = chartRect.width;
+            lossChartCanvas.height = chartRect.height;
+
+            updateUI();
+        }
+
+        window.addEventListener('resize', resizeCanvases);
+        window.onload = () => {
+            renderLesson();
+            syncControlsFromState();
+            resizeCanvases();
+        };
+    </script>
+</body>
+</html>
